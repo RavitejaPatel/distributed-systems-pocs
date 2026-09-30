@@ -9,8 +9,8 @@ import io.grpc.stub.StreamObserver;
 
 public class InventoryServiceApp {
 
-    // In-memory stock: one item, starting quantity 5. No persistence yet.
-    private static int stock = 5;
+    // In-memory stock: one item, starting quantity 1. No persistence yet.
+    private static int stock = 1;
 
     public static void main(String[] args) throws Exception {
         int port = 50051;
@@ -34,19 +34,28 @@ public class InventoryServiceApp {
 
             ReserveResponse response;
 
-            if (stock >= request.getQuantity()) {
-                stock -= request.getQuantity();
-                response = ReserveResponse.newBuilder()
-                        .setSuccess(true)
-                        .setMessage("Reserved successfully")
-                        .setRemainingStock(stock)
-                        .build();
-            } else {
-                response = ReserveResponse.newBuilder()
-                        .setSuccess(false)
-                        .setMessage("Insufficient stock")
-                        .setRemainingStock(stock)
-                        .build();
+            // synchronized ensures only one thread at a time can execute this block,
+            // closing the race window between checking stock and decrementing it.
+            synchronized (InventoryServiceApp.class) {
+                if (stock >= request.getQuantity()) {
+                    try {
+                        Thread.sleep(50); // artificially widen the race window for demonstration
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    stock -= request.getQuantity();
+                    response = ReserveResponse.newBuilder()
+                            .setSuccess(true)
+                            .setMessage("Reserved successfully")
+                            .setRemainingStock(stock)
+                            .build();
+                } else {
+                    response = ReserveResponse.newBuilder()
+                            .setSuccess(false)
+                            .setMessage("Insufficient stock")
+                            .setRemainingStock(stock)
+                            .build();
+                }
             }
 
             responseObserver.onNext(response);   // send the response back to the caller
