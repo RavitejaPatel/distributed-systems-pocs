@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 520" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="950" height="520" fill="#ffffff"/>
+  <text x="475" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#1a1a1a">Three Production Failure Modes — Discovered, Reproduced, Fixed</text>
+
+  <!-- Row template: Goal | Problem | Fix | Proof -->
+  <text x="40" y="65" font-size="11" font-weight="bold" fill="#666666">GOAL</text>
+  <text x="140" y="65" font-size="11" font-weight="bold" fill="#666666">PROBLEM (reproduced first)</text>
+  <text x="430" y="65" font-size="11" font-weight="bold" fill="#666666">FIX</text>
+  <text x="650" y="65" font-size="11" font-weight="bold" fill="#666666">PROOF</text>
+  <line x1="30" y1="75" x2="920" y2="75" stroke="#dddddd" stroke-width="1"/>
+
+  <!-- Goal 2: Race condition -->
+  <rect x="30" y="90" width="80" height="110" rx="8" fill="#ffe9e9" stroke="#c0392b"/>
+  <text x="70" y="150" text-anchor="middle" font-size="13" font-weight="bold" fill="#962d22">Goal 2</text>
+  <text x="70" y="168" text-anchor="middle" font-size="10" fill="#962d22">Race</text>
+  <text x="70" y="182" text-anchor="middle" font-size="10" fill="#962d22">Condition</text>
+
+  <rect x="130" y="90" width="280" height="110" rx="8" fill="#fff5f5" stroke="#e0b4b0"/>
+  <text x="145" y="112" font-size="11" fill="#333333">20 threads, 1 item in stock.</text>
+  <text x="145" y="130" font-size="11" fill="#333333">Unsynchronized check-then-decrement</text>
+  <text x="145" y="148" font-size="11" fill="#333333">lets multiple threads read stock=1</text>
+  <text x="145" y="166" font-size="11" fill="#333333">before any of them decrements it.</text>
+  <text x="145" y="186" font-size="11" font-weight="bold" fill="#962d22">Result: 20/20 reservations succeed</text>
+
+  <rect x="420" y="90" width="210" height="110" rx="8" fill="#eafaf0" stroke="#2f9e52"/>
+  <text x="435" y="115" font-size="11" fill="#1d6b38">Wrap check + decrement in a</text>
+  <text x="435" y="133" font-size="11" fill="#1d6b38">single `synchronized` block so</text>
+  <text x="435" y="151" font-size="11" fill="#1d6b38">only one thread can evaluate</text>
+  <text x="435" y="169" font-size="11" fill="#1d6b38">and mutate stock at a time.</text>
+
+  <rect x="640" y="90" width="280" height="110" rx="8" fill="#f5f9ff" stroke="#9db8e8"/>
+  <text x="655" y="112" font-size="11" fill="#2a2a2a">Before fix: 20/20 succeed (bug)</text>
+  <text x="655" y="132" font-size="11" fill="#2a2a2a">After fix: 1/20 succeeds,</text>
+  <text x="655" y="150" font-size="11" fill="#2a2a2a">19/20 get "Insufficient stock"</text>
+  <text x="655" y="170" font-size="10" fill="#666666">(see ConcurrencyTest demo)</text>
+
+  <!-- Goal 3: Deadline -->
+  <rect x="30" y="215" width="80" height="110" rx="8" fill="#fff4e0" stroke="#c77c00"/>
+  <text x="70" y="275" text-anchor="middle" font-size="13" font-weight="bold" fill="#8a5600">Goal 3</text>
+  <text x="70" y="293" text-anchor="middle" font-size="10" fill="#8a5600">Slow /</text>
+  <text x="70" y="307" text-anchor="middle" font-size="10" fill="#8a5600">Hung Dep.</text>
+
+  <rect x="130" y="215" width="280" height="110" rx="8" fill="#fffaf0" stroke="#e8cf9d"/>
+  <text x="145" y="237" font-size="11" fill="#333333">InventoryService simulates a 10s</text>
+  <text x="145" y="255" font-size="11" fill="#333333">stall (item-slow). With no client-side</text>
+  <text x="145" y="273" font-size="11" fill="#333333">deadline, OrderService's thread</text>
+  <text x="145" y="291" font-size="11" fill="#333333">blocks indefinitely waiting for it.</text>
+  <text x="145" y="311" font-size="11" font-weight="bold" fill="#8a5600">Result: caller hangs ~10,000ms</text>
+
+  <rect x="420" y="215" width="210" height="110" rx="8" fill="#eafaf0" stroke="#2f9e52"/>
+  <text x="435" y="240" font-size="11" fill="#1d6b38">Set a client-side deadline:</text>
+  <text x="435" y="258" font-size="11" fill="#1d6b38">stub.withDeadlineAfter(2, SECONDS)</text>
+  <text x="435" y="278" font-size="11" fill="#1d6b38">gRPC cancels the call itself once</text>
+  <text x="435" y="296" font-size="11" fill="#1d6b38">the deadline passes.</text>
+
+  <rect x="640" y="215" width="280" height="110" rx="8" fill="#f5f9ff" stroke="#9db8e8"/>
+  <text x="655" y="237" font-size="11" fill="#2a2a2a">Before fix: UNAVAILABLE-style hang,</text>
+  <text x="655" y="255" font-size="11" fill="#2a2a2a">caller blocked ~10s</text>
+  <text x="655" y="275" font-size="11" fill="#2a2a2a">After fix: fails fast at ~2005ms</text>
+  <text x="655" y="293" font-size="11" fill="#2a2a2a">with status DEADLINE_EXCEEDED</text>
+
+  <!-- Goal 4: Idempotency -->
+  <rect x="30" y="340" width="80" height="110" rx="8" fill="#eef1ff" stroke="#3b5fc4"/>
+  <text x="70" y="400" text-anchor="middle" font-size="13" font-weight="bold" fill="#203a8a">Goal 4</text>
+  <text x="70" y="418" text-anchor="middle" font-size="10" fill="#203a8a">Lost</text>
+  <text x="70" y="432" text-anchor="middle" font-size="10" fill="#203a8a">Response</text>
+
+  <rect x="130" y="340" width="280" height="110" rx="8" fill="#f5f6ff" stroke="#b9c4ec"/>
+  <text x="145" y="362" font-size="11" fill="#333333">Request succeeds server-side, but</text>
+  <text x="145" y="380" font-size="11" fill="#333333">the response is lost/times out. Client</text>
+  <text x="145" y="398" font-size="11" fill="#333333">can't tell "did it work?" and retries</text>
+  <text x="145" y="416" font-size="11" fill="#333333">the same order blindly.</text>
+  <text x="145" y="436" font-size="11" font-weight="bold" fill="#203a8a">Result: risk of double-reserving stock</text>
+
+  <rect x="420" y="340" width="210" height="110" rx="8" fill="#eafaf0" stroke="#2f9e52"/>
+  <text x="435" y="362" font-size="11" fill="#1d6b38">Client sends a UUID</text>
+  <text x="435" y="380" font-size="11" fill="#1d6b38">idempotency_key per order.</text>
+  <text x="435" y="398" font-size="11" fill="#1d6b38">Server caches the response per</text>
+  <text x="435" y="416" font-size="11" fill="#1d6b38">key; a repeat key returns the</text>
+  <text x="435" y="434" font-size="11" fill="#1d6b38">cached result, untouched stock.</text>
+
+  <rect x="640" y="340" width="280" height="110" rx="8" fill="#f5f9ff" stroke="#9db8e8"/>
+  <text x="655" y="362" font-size="11" fill="#2a2a2a">Attempt 1: success=true, stock=0</text>
+  <text x="655" y="382" font-size="11" fill="#2a2a2a">Attempt 2 (retry, same key):</text>
+  <text x="655" y="400" font-size="11" fill="#2a2a2a">success=true, stock=0 (cached)</text>
+  <text x="655" y="420" font-size="10" fill="#666666">(see OrderServiceRetryDemo)</text>
+
+  <text x="475" y="490" text-anchor="middle" font-size="11" fill="#666666">Pattern used throughout: break it deliberately &#8594; prove the bug with a test &#8594; apply the fix &#8594; re-run the same test to prove it</text>
+</svg>

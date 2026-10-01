@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="900" height="420" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#1a1a1a">gRPC RPC Architecture — OrderService &#8594; InventoryService</text>
+
+  <!-- Shared contract box -->
+  <rect x="330" y="55" width="240" height="60" rx="8" fill="#fff7e6" stroke="#d99a00" stroke-width="1.5"/>
+  <text x="450" y="78" text-anchor="middle" font-size="13" font-weight="bold" fill="#8a5a00">inventory.proto</text>
+  <text x="450" y="96" text-anchor="middle" font-size="11" fill="#8a5a00">shared contract (service + messages)</text>
+
+  <!-- arrows from proto down to both services -->
+  <line x1="400" y1="115" x2="250" y2="150" stroke="#d99a00" stroke-width="1.5"/>
+  <line x1="500" y1="115" x2="650" y2="150" stroke="#d99a00" stroke-width="1.5"/>
+
+  <!-- OrderService box -->
+  <rect x="100" y="150" width="300" height="150" rx="10" fill="#eef3ff" stroke="#3b5fc4" stroke-width="2"/>
+  <text x="250" y="178" text-anchor="middle" font-size="14" font-weight="bold" fill="#203a8a">OrderService (gRPC client)</text>
+  <text x="250" y="200" text-anchor="middle" font-size="11" fill="#2a2a2a">InventoryServiceBlockingStub</text>
+  <text x="250" y="220" text-anchor="middle" font-size="11" fill="#2a2a2a">ManagedChannelBuilder</text>
+  <text x="250" y="240" text-anchor="middle" font-size="11" fill="#2a2a2a">.withDeadlineAfter(2, SECONDS)</text>
+  <text x="250" y="260" text-anchor="middle" font-size="11" fill="#2a2a2a">idempotency_key = UUID per order</text>
+  <text x="250" y="282" text-anchor="middle" font-size="10" fill="#555555">runs: OrderServiceApp / *Demo classes</text>
+
+  <!-- InventoryService box -->
+  <rect x="500" y="150" width="300" height="150" rx="10" fill="#e9f9ee" stroke="#2f9e52" stroke-width="2"/>
+  <text x="650" y="178" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d6b38">InventoryService (gRPC server)</text>
+  <text x="650" y="200" text-anchor="middle" font-size="11" fill="#2a2a2a">InventoryServiceImplBase</text>
+  <text x="650" y="220" text-anchor="middle" font-size="11" fill="#2a2a2a">synchronized stock check/decrement</text>
+  <text x="650" y="240" text-anchor="middle" font-size="11" fill="#2a2a2a">ConcurrentHashMap dedup cache</text>
+  <text x="650" y="260" text-anchor="middle" font-size="11" fill="#2a2a2a">port 50051</text>
+  <text x="650" y="282" text-anchor="middle" font-size="10" fill="#555555">runs: InventoryServiceApp</text>
+
+  <!-- request/response arrows -->
+  <line x1="400" y1="205" x2="500" y2="205" stroke="#444444" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="450" y="198" text-anchor="middle" font-size="10" fill="#444444">checkAndReserve(ReserveRequest)</text>
+
+  <line x1="500" y1="245" x2="400" y2="245" stroke="#444444" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="450" y="263" text-anchor="middle" font-size="10" fill="#444444">ReserveResponse</text>
+
+  <!-- transport label -->
+  <text x="450" y="320" text-anchor="middle" font-size="11" fill="#666666">Transport: HTTP/2, Protocol Buffers binary encoding, plaintext (no TLS) — localhost:50051</text>
+  <text x="450" y="340" text-anchor="middle" font-size="11" fill="#666666">Both processes run locally via Maven (mvn compile exec:java) — no Docker for this leg</text>
+
+  <!-- legend -->
+  <rect x="100" y="370" width="700" height="36" rx="6" fill="#f5f5f5" stroke="#cccccc"/>
+  <text x="450" y="393" text-anchor="middle" font-size="11" fill="#333333">Shared stock state lives only inside InventoryService's JVM (in-memory) — a POC simplification, not a real datastore</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#444444"/>
+    </marker>
+  </defs>
+</svg>
