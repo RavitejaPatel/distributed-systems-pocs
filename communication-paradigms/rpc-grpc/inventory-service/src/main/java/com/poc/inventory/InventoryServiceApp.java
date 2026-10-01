@@ -7,10 +7,17 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.stub.StreamObserver;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 public class InventoryServiceApp {
 
-    // In-memory stock: one item, starting quantity 1. No persistence yet.
     private static int stock = 1;
+
+    // Remembers which idempotency keys we've already processed, and what we
+    // responded with — so a retried request returns the ORIGINAL result
+    // instead of re-running the reservation logic a second time.
+    private static final Map<String, ReserveResponse> processedRequests = new ConcurrentHashMap<>();
 
     public static void main(String[] args) throws Exception {
         int port = 50051;
@@ -25,15 +32,26 @@ public class InventoryServiceApp {
         server.awaitTermination();
     }
 
-    // The actual RPC implementation — this is the "function" OrderService calls remotely.
     static class InventoryServiceImpl extends InventoryServiceGrpc.InventoryServiceImplBase {
 
         @Override
         public void checkAndReserve(ReserveRequest request, StreamObserver<ReserveResponse> responseObserver) {
-            System.out.println("Received request: item=" + request.getItemId() + ", qty=" + request.getQuantity());
-            
-            // Simulate a slow downstream dependency (e.g. a hung database call)
-            // for a specific item, to demonstrate what happens without a deadline.
+            System.out.println("Received request: item=" + request.getItemId()
+                    + ", qty=" + request.getQuantity()
+                    + ", idempotencyKey=" + request.getIdempotencyKey());
+
+            String key = request.getIdempotencyKey();
+
+            // Check BEFORE doing anything else: have we already handled this exact
+            // logical request? If so, return the stored result — do NOT touch stock again.
+            if (!key.isEmpty() && processedRequests.containsKey(key)) {
+                System.out.println("Duplicate request detected for key=" + key + " — returning cached response, stock untouched");
+                ReserveResponse cached = processedRequests.get(key);
+                responseObserver.onNext(cached);
+                responseObserver.onCompleted();
+                return;
+            }
+
             if (request.getItemId().equals("item-slow")) {
                 try {
                     System.out.println("Simulating a slow dependency... sleeping 10 seconds");
@@ -41,15 +59,14 @@ public class InventoryServiceApp {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
-            }   
+            }
+
             ReserveResponse response;
 
-            // synchronized ensures only one thread at a time can execute this block,
-            // closing the race window between checking stock and decrementing it.
             synchronized (InventoryServiceApp.class) {
                 if (stock >= request.getQuantity()) {
                     try {
-                        Thread.sleep(50); // artificially widen the race window for demonstration
+                        Thread.sleep(50);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
@@ -68,8 +85,14 @@ public class InventoryServiceApp {
                 }
             }
 
-            responseObserver.onNext(response);   // send the response back to the caller
-            responseObserver.onCompleted();       // signal the RPC is done
+            // Remember this result so a retry with the same key returns it instead
+            // of running the reservation logic again.
+            if (!key.isEmpty()) {
+                processedRequests.put(key, response);
+            }
+
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
         }
     }
 }
