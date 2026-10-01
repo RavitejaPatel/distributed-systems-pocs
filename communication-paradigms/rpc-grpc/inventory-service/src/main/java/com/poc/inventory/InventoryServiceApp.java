@@ -31,7 +31,17 @@ public class InventoryServiceApp {
         @Override
         public void checkAndReserve(ReserveRequest request, StreamObserver<ReserveResponse> responseObserver) {
             System.out.println("Received request: item=" + request.getItemId() + ", qty=" + request.getQuantity());
-
+            
+            // Simulate a slow downstream dependency (e.g. a hung database call)
+            // for a specific item, to demonstrate what happens without a deadline.
+            if (request.getItemId().equals("item-slow")) {
+                try {
+                    System.out.println("Simulating a slow dependency... sleeping 10 seconds");
+                    Thread.sleep(10000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }   
             ReserveResponse response;
 
             // synchronized ensures only one thread at a time can execute this block,
