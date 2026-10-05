@@ -11,6 +11,7 @@ public class SchemaSetup {
     public static void main(String[] args) throws Exception {
         String sql;
         try (InputStream in = SchemaSetup.class.getResourceAsStream("/schema.sql")) {
+            if (in == null) throw new IllegalStateException("schema.sql not found: it must be in src/main/resources/");
             sql = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
         try (Connection conn = Db.connect(); Statement st = conn.createStatement()) {
