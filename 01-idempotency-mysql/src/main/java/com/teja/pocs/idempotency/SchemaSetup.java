@@ -7,7 +7,6 @@ import java.sql.Statement;
 
 /** Step 3: (re)create the tables from src/main/resources/schema.sql. */
 public class SchemaSetup {
-
     public static void main(String[] args) throws Exception {
         String sql;
         try (InputStream in = SchemaSetup.class.getResourceAsStream("/schema.sql")) {
