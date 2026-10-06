@@ -1,4 +1,4 @@
-﻿package com.teja.pocs.idempotency;
+package com.teja.pocs.idempotency;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
