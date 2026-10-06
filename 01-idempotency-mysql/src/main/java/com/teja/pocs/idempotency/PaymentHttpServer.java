@@ -39,6 +39,8 @@ public class PaymentHttpServer {
                 Thread.sleep(5000);
             }
             reply(ex, 200, paymentId);
+        } catch (PaymentService.KeyReusedException e) {
+            reply(ex, 409, e.getMessage());                     // 7a: Conflict - key reused for a different request
         } catch (Exception e) {
             reply(ex, 500, "Error: " + e.getMessage());
         }

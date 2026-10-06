@@ -1,13 +1,30 @@
 package com.teja.pocs.idempotency;
 
-   import java.sql.Connection;
-   import java.sql.PreparedStatement;
-   import java.sql.ResultSet;
-   import java.sql.SQLIntegrityConstraintViolationException;
-   import java.util.UUID;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLIntegrityConstraintViolationException;
+import java.util.HexFormat;
+import java.util.UUID;
 
 /** The server side: takes a payment request and charges the customer. */
 public class PaymentService {
+
+    /** Step 7a: thrown when a key is reused for a DIFFERENT request (the server turns it into HTTP 409). */
+    public static class KeyReusedException extends RuntimeException {
+        public KeyReusedException(String key) {
+            super("Idempotency-Key " + key + " was already used for a different request");
+        }
+    }
+
+    /** Step 7a: fingerprint of a request = SHA-256 of "customerId|amountCents" (64 hex characters). */
+    static String requestHash(String customerId, int amountCents) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((customerId + "|" + amountCents).getBytes(StandardCharsets.UTF_8));
+        return HexFormat.of().formatHex(digest);
+    }
 
     /** Step 4: NAIVE version. Every call = a new charge, even if it's a retry. */
     public String payNaive(String customerId, int amountCents) throws Exception {
@@ -26,16 +43,19 @@ public class PaymentService {
     /**
      * Step 5: IDEMPOTENT version. Claim the key, charge, save the result: all in ONE transaction.
      * A retry with the same key gets the saved payment back. No second charge.
+     * Step 7a: the same key with a DIFFERENT request is refused (KeyReusedException -> HTTP 409).
      */
     public String payIdempotent(String idempotencyKey, String customerId, int amountCents) throws Exception {
+        String hash = requestHash(customerId, amountCents);    // 7a: fingerprint of THIS request
         try (Connection conn = Db.connect()) {
             conn.setAutoCommit(false);                          // start a transaction
             try {
-                // 1. Claim the key. If it already exists, MySQL throws (Step 3's lesson).
+                // 1. Claim the key AND store this request's fingerprint next to it (7a).
                 try (PreparedStatement ps = conn.prepareStatement(
                         "INSERT INTO idempotency_keys (idempotency_key, request_hash, status, expires_at) "
-                      + "VALUES (?, '-', 'IN_PROGRESS', NOW(3) + INTERVAL 24 HOUR)")) {
+                      + "VALUES (?, ?, 'IN_PROGRESS', NOW(3) + INTERVAL 24 HOUR)")) {
                     ps.setString(1, idempotencyKey);
+                    ps.setString(2, hash);
                     ps.executeUpdate();
                 }
 
@@ -63,9 +83,16 @@ public class PaymentService {
 
             } catch (SQLIntegrityConstraintViolationException duplicateKey) {
                 conn.rollback();                                // nothing from this attempt is kept
-                String saved = findSavedPayment(conn, idempotencyKey);
-                System.out.println("  [server] key " + idempotencyKey + " seen before -> returning saved " + saved + ", NO new charge");
-                return saved;
+                String[] saved = findSaved(conn, idempotencyKey);   // [0] = payment_id, [1] = request_hash
+
+                // 7a: same key but a DIFFERENT request? Refuse instead of returning the old payment.
+                if (!saved[1].equals(hash)) {
+                    System.out.println("  [server] key " + idempotencyKey + " REUSED for a different request -> 409, NO charge");
+                    throw new KeyReusedException(idempotencyKey);
+                }
+
+                System.out.println("  [server] key " + idempotencyKey + " seen before -> returning saved " + saved[0] + ", NO new charge");
+                return saved[0];
             } catch (Exception e) {
                 conn.rollback();                                // any other failure: undo everything
                 throw e;
@@ -73,13 +100,14 @@ public class PaymentService {
         }
     }
 
-    private String findSavedPayment(Connection conn, String idempotencyKey) throws Exception {
+    /** Returns { payment_id, request_hash } saved for this key. */
+    private String[] findSaved(Connection conn, String idempotencyKey) throws Exception {
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT payment_id FROM idempotency_keys WHERE idempotency_key = ?")) {
+                "SELECT payment_id, request_hash FROM idempotency_keys WHERE idempotency_key = ?")) {
             ps.setString(1, idempotencyKey);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
-                return rs.getString(1);
+                return new String[] { rs.getString(1), rs.getString(2) };
             }
         }
     }
