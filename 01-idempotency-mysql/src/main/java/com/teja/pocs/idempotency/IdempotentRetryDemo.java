@@ -7,7 +7,7 @@ public class IdempotentRetryDemo {
 
     public static void main(String[] args) throws Exception {
         PaymentService server = new PaymentService();
-        String customer = "cust-44";
+        String customer = "cust-45";
 
         // The CLIENT creates the key ONCE per purchase, before the first attempt
         String key = UUID.randomUUID().toString();
