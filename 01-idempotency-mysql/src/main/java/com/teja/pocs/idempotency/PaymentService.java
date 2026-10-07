@@ -111,4 +111,13 @@ public class PaymentService {
             }
         }
     }
+
+    /** Step 7c: delete idempotency keys whose 24h window has passed. Payments are NOT touched. */
+    public int deleteExpiredKeys() throws Exception {
+        try (Connection conn = Db.connect();
+             PreparedStatement ps = conn.prepareStatement(
+                 "DELETE FROM idempotency_keys WHERE expires_at < NOW(3)")) {
+            return ps.executeUpdate();                  // number of keys deleted
+        }
+    }
 }

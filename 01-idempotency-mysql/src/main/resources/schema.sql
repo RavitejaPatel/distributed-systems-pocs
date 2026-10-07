@@ -20,5 +20,7 @@ CREATE TABLE idempotency_keys (
     status           VARCHAR(20)  NOT NULL,
     payment_id       VARCHAR(40)  NULL,
     created_at       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    expires_at       TIMESTAMP(3) NOT NULL
+    expires_at       TIMESTAMP(3) NOT NULL,
+    INDEX idx_expires_at (expires_at)          -- lets the cleanup job find expired keys fast
 );
+
