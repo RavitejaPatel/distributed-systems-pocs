@@ -7,6 +7,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Many checkout clients calling the flaky payment provider at the same time.
@@ -16,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Step 3: "immediate"  -> retry with no wait at all (the retry storm)
  * Step 4: "fixed"      -> always wait exactly 1 second (synchronized waves)
  * Step 5: "exponential"-> wait 100, 200, 400, 800 ... ms, capped at 2s (still synchronized)
+ * Step 6: "jitter"     -> wait a RANDOM time between 0 and the exponential delay ("full jitter")
  */
 public class RetryClients {
 
@@ -86,6 +88,8 @@ public class RetryClients {
                 return 1000;                                 // Step 3: no wait at all
             case "exponential":
                 return exponentialDelay(attempt);           // Step 5: 100, 200, 400, 800 ... capped
+            case "jitter":
+                return ThreadLocalRandom.current().nextLong(exponentialDelay(attempt) + 1);  // Step 6: random 0..delay
             default:
                 throw new IllegalArgumentException("Unknown strategy: " + strategy);
         }
