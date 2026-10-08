@@ -15,8 +15,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Step 3: "immediate"  -> retry with no wait at all (the retry storm)
  * Step 4: "fixed"      -> always wait exactly 1 second (synchronized waves)
+ * Step 5: "exponential"-> wait 100, 200, 400, 800 ... ms, capped at 2s (still synchronized)
  */
 public class RetryClients {
+
+    static final long BASE_DELAY_MS = 100;                // first backoff wait
+    static final long MAX_DELAY_MS = 2000;                // never wait longer than this (the "cap")
 
     static final int CLIENTS = 50;
     static final int MAX_ATTEMPTS = 2000;                  // safety limit so nothing runs forever
@@ -80,9 +84,17 @@ public class RetryClients {
                 return 0;  
             case "fixed":
                 return 1000;                                 // Step 3: no wait at all
+            case "exponential":
+                return exponentialDelay(attempt);           // Step 5: 100, 200, 400, 800 ... capped
             default:
                 throw new IllegalArgumentException("Unknown strategy: " + strategy);
         }
+    }
+
+    /** base * 2^(attempt-1), but never more than the cap.  attempt 1 -> 100, 2 -> 200, 3 -> 400 ... */
+    static long exponentialDelay(int attempt) {
+        long delay = BASE_DELAY_MS * (1L << Math.min(attempt - 1, 20));   // 1L << n  is  2^n
+        return Math.min(delay, MAX_DELAY_MS);
     }
 
     static int call() throws Exception {
