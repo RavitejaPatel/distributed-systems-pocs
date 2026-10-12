@@ -17,7 +17,9 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 /**
- * The "Catalog API" (App Service in Microsoft's diagram). Goal 3: protected by a CircuitBreaker.
+ * The "Catalog API" (App Service in Microsoft's diagram).
+ *   Goal 3: CircuitBreaker (fail fast when the store keeps failing).
+ *   Goal 4: ResponseCache fallback (serve the last good answer, marked STALE).
  *   GET /catalog/{id} -> reads the product from ThrottledStore.
  * Like the Cosmos DB SDK, it retries a 429 after "x-ms-retry-after-ms" (max 3 retries).
  */
@@ -36,9 +38,12 @@ public class CatalogApi {
     static final AtomicInteger storeCalls = new AtomicInteger();    // calls made TO the store (incl. retries)
     static final AtomicLong totalLatencyMs = new AtomicLong();      // sum of user wait times
     static final AtomicInteger shortCircuited = new AtomicInteger(); // Goal 3: blocked by the breaker (no store call)
+    static final AtomicInteger fromCache = new AtomicInteger();      // Goal 4: answered from the cache (stale)
 
     // Goal 3: ONE breaker shared by all 50 threads. Trips after 5 failures in a row.
     static final CircuitBreaker breaker = new CircuitBreaker(5);
+    // Goal 4: last good answer per product, used as fallback
+    static final ResponseCache cache = new ResponseCache();
 
     public static void main(String[] args) throws Exception {
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8092"));
@@ -46,7 +51,7 @@ public class CatalogApi {
         server.createContext("/catalog/", CatalogApi::handle);
         server.setExecutor(Executors.newFixedThreadPool(50));       // Step 5: 50 threads (each may sleep while retrying)
         server.start();
-        System.out.println("Catalog API on http://localhost:" + port + "/catalog/{id}   store = " + STORE_URL + "   (circuit breaker: threshold 5)");
+        System.out.println("Catalog API on http://localhost:" + port + "/catalog/{id}   store = " + STORE_URL + "   (circuit breaker + cache fallback)");
 
         Executors.newSingleThreadScheduledExecutor()                // Step 5: print stats every second
                 .scheduleAtFixedRate(CatalogApi::printSecond, 1, 1, TimeUnit.SECONDS);
@@ -60,7 +65,7 @@ public class CatalogApi {
 
         int status;
         String body;
-        if (!breaker.allowRequest()) {                               // Goal 3: OPEN -> fail fast, NO store call
+        if (!breaker.allowRequest()) {                               // Goal 3: OPEN -> don't call the store
             shortCircuited.incrementAndGet();
             status = 503;
             body = "{\"error\":\"circuit open, try again later\"}";
@@ -75,11 +80,24 @@ public class CatalogApi {
                     breaker.recordSuccess();                         // 200 or 404: the store is healthy
                     status = res.statusCode();
                     body = res.body();
+                    if (status == 200) cache.put(id, body);          // Goal 4: remember the last good answer
                 }
             } catch (Exception e) {
                 breaker.recordFailure();                             // store down / not reachable
                 status = 503;
                 body = "{\"error\":\"store unavailable\"}";
+            }
+        }
+
+        // Goal 4: FALLBACK. Store not usable (503)? Serve the last good answer if we have one.
+        if (status == 503) {
+            var cached = cache.get(id);
+            if (cached.isPresent()) {
+                fromCache.incrementAndGet();
+                status = 200;
+                body = cached.get().body();
+                ex.getResponseHeaders().add("X-Cache", "STALE");    // tell the caller it's not fresh
+                ex.getResponseHeaders().add("X-Cache-Age-Ms", String.valueOf(cached.get().ageMs()));
             }
         }
 
@@ -112,9 +130,9 @@ public class CatalogApi {
         int r = requests.getAndSet(0);                               // read AND reset in one step
         if (r == 0) return;
         long avg = totalLatencyMs.getAndSet(0) / r;
-        System.out.printf("[api] state=%s  requests=%d  ok=%d  failed(503)=%d  shortCircuited=%d  storeCalls=%d  avgLatency=%dms%n",
+        System.out.printf("[api] state=%s  requests=%d  ok=%d  failed(503)=%d  shortCircuited=%d  fromCache=%d  storeCalls=%d  avgLatency=%dms%n",
                 breaker.getState(), r, ok.getAndSet(0), failed.getAndSet(0), shortCircuited.getAndSet(0),
-                storeCalls.getAndSet(0), avg);
+                fromCache.getAndSet(0), storeCalls.getAndSet(0), avg);
     }
 
     /** Helper: writes status + JSON body back to whoever called us. */
