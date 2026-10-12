@@ -1,6 +1,15 @@
+# Build output
 target/
 *.class
-.vscode/
+
+# IDE
 .idea/
+.vscode/
 *.iml
-redisnotes.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local secrets
+.env
