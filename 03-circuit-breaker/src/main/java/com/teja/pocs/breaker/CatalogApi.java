@@ -40,8 +40,8 @@ public class CatalogApi {
     static final AtomicInteger shortCircuited = new AtomicInteger(); // Goal 3: blocked by the breaker (no store call)
     static final AtomicInteger fromCache = new AtomicInteger();      // Goal 4: answered from the cache (stale)
 
-    // Goal 3: ONE breaker shared by all 50 threads. Trips after 5 failures in a row.
-    static final CircuitBreaker breaker = new CircuitBreaker(5);
+    // Goal 3+5: ONE breaker shared by all 50 threads. Trips after 5 failures in a row, tests again after 5s.
+    static final CircuitBreaker breaker = new CircuitBreaker(5, 5000);   // Goal 5: stay OPEN 5s, then test
     // Goal 4: last good answer per product, used as fallback
     static final ResponseCache cache = new ResponseCache();
 
