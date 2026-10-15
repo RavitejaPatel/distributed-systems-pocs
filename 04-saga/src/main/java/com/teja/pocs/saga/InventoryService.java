@@ -8,10 +8,11 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.concurrent.Executors;
+import java.sql.SQLIntegrityConstraintViolationException;
 
 public class InventoryService {
 
-     static final String DB = "inventory_db";
+    static final String DB = "inventory_db";
 
     public static void main(String[] args) throws Exception {
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8083"));   // Docker (Goal 7) can change it
@@ -65,24 +66,53 @@ public class InventoryService {
         }
     }
     
-        /**
-     * Part A: take stock ONLY if enough is available, atomically (no overselling).
-     * Returns true = reserved, false = not enough stock. DB errors are THROWN (-> 500), never turned into "false".
+    /**
+     * ONE local transaction in inventory_db:
+     *   1. take stock ONLY if enough is available (atomic conditional UPDATE -> no overselling)
+     *   2. record the reservation; order_id is the PRIMARY KEY -> a retry for the same order is detected
+     * Returns true = reserved (now, or already earlier for this order), false = out of stock.
+     * DB errors are thrown (-> 500), never turned into "false".
      */
     static boolean reserve(String orderId, String sku, int qty) throws Exception {
-        try (Connection c = Db.connect(DB);
-             PreparedStatement ps = c.prepareStatement(
-                 "UPDATE stock SET available = available - ? WHERE sku = ? AND available >= ?")) {
-            ps.setInt(1, qty);
-            ps.setString(2, sku);
-            ps.setInt(3, qty);
-            int updated = ps.executeUpdate();                 // 1 = stock taken, 0 = not enough (or unknown sku)
-            if (updated == 1) {
+        try (Connection c = Db.connect(DB)) {
+            c.setAutoCommit(false);                                   // start a transaction
+            try {
+                // 1. take stock (only if enough)
+                int updated;
+                try (PreparedStatement ps = c.prepareStatement(
+                        "UPDATE stock SET available = available - ? WHERE sku = ? AND available >= ?")) {
+                    ps.setInt(1, qty);
+                    ps.setString(2, sku);
+                    ps.setInt(3, qty);
+                    updated = ps.executeUpdate();                     // 1 = taken, 0 = not enough / unknown sku
+                }
+                if (updated == 0) {
+                    c.rollback();
+                    System.out.println("  [inventory] " + orderId + ": OUT OF STOCK for " + qty + " x " + sku);
+                    return false;
+                }
+
+                // 2. record the reservation (fails with duplicate key if this order was already reserved)
+                try (PreparedStatement ps = c.prepareStatement(
+                        "INSERT INTO reservations (order_id, sku, qty, status) VALUES (?, ?, ?, 'RESERVED')")) {
+                    ps.setString(1, orderId);
+                    ps.setString(2, sku);
+                    ps.setInt(3, qty);
+                    ps.executeUpdate();
+                }
+
+                c.commit();                                           // stock change + reservation saved TOGETHER
                 System.out.println("  [inventory] " + orderId + ": RESERVED " + qty + " x " + sku);
                 return true;
+
+            } catch (SQLIntegrityConstraintViolationException duplicate) {
+                c.rollback();                                         // RETRY: undo step 1 of THIS attempt
+                System.out.println("  [inventory] " + orderId + ": already reserved (retry) -> no change");
+                return true;                                          // same answer as the first time
+            } catch (Exception e) {
+                c.rollback();                                         // any other error: undo everything
+                throw e;                                              // -> handleReserve -> 500
             }
-            System.out.println("  [inventory] " + orderId + ": OUT OF STOCK for " + qty + " x " + sku);
-            return false;
         }
     }
     
